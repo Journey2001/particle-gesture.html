@@ -143,7 +143,7 @@
     <video id="webcam-video" autoplay playsinline></video>
     
     <div id="control-panel">
-        <h3>🎮 控制面板 <span id="fps-display" style="float:right;color:#8f8;font-size:12px;">-- FPS</span></h3>
+        <h3>🎮 控制面板 <span id="fps-display" style="float:right;color:#8f8;font-size:12px;">-- FPS</span> <span id="mem-display" style="float:right;color:#aaa;font-size:10px;margin-right:10px;">--MB</span></h3>
         
         <div class="control-group">
             <label>选择图片</label>
@@ -212,6 +212,7 @@
         };
         document.body.appendChild(debugToggleBtn);
         
+        const MAX_LOG_LINES = 100; // 限制最大日志行数
         const debugLog = (tag, message, data = null) => {
             const timestamp = new Date().toISOString().substr(11, 12);
             const logMsg = `[${timestamp}][${tag}] ${message}`;
@@ -220,6 +221,11 @@
             const line = document.createElement('div');
             line.textContent = logMsg + (data !== null ? ' ' + JSON.stringify(data) : '');
             debugPanel.appendChild(line);
+            
+            // 限制日志数量，防止内存泄漏
+            while (debugPanel.childNodes.length > MAX_LOG_LINES) {
+                debugPanel.removeChild(debugPanel.firstChild);
+            }
             debugPanel.scrollTop = debugPanel.scrollHeight;
         };
 
@@ -476,13 +482,21 @@
         function animate() {
             requestAnimationFrame(animate);
             
-            // 计算并显示帧率
+            // 计算并显示帧率和内存
             frameCount++;
             const now = performance.now();
             if (now - lastFpsTime >= 1000) {
                 const fps = Math.round(frameCount * 1000 / (now - lastFpsTime));
                 document.getElementById('fps-display').textContent = fps + ' FPS';
                 document.getElementById('fps-display').style.color = fps >= 50 ? '#8f8' : fps >= 30 ? '#fa8' : '#f88';
+                
+                // 显示内存使用（如果浏览器支持）
+                if (performance.memory) {
+                    const memMB = Math.round(performance.memory.usedJSHeapSize / 1024 / 1024);
+                    document.getElementById('mem-display').textContent = memMB + 'MB';
+                    document.getElementById('mem-display').style.color = memMB < 100 ? '#aaa' : memMB < 200 ? '#fa8' : '#f88';
+                }
+                
                 frameCount = 0;
                 lastFpsTime = now;
             }
@@ -747,26 +761,16 @@
                 try {
                     const results = handLandmarker.detectForVideo(video, nowInMs);
                     
-                    // 每50帧输出一次检测结果（约每秒1-2次）
-                    if (predictCallCount % 50 === 0) {
+                    // 每200帧输出一次检测结果（减少日志频率）
+                    if (predictCallCount % 200 === 0) {
                         debugLog('DETECT', '检测结果', {
                             hasLandmarks: !!(results.landmarks && results.landmarks.length > 0),
-                            landmarksCount: results.landmarks ? results.landmarks.length : 0,
-                            handedness: results.handedness ? results.handedness.length : 0
+                            landmarksCount: results.landmarks ? results.landmarks.length : 0
                         });
                     }
                     
                     if (results.landmarks && results.landmarks.length > 0) {
                         const newGesture = determineGesture(results.landmarks[0]);
-                        
-                        // 每次检测到手都输出日志
-                        if (predictCallCount % 30 === 0) {
-                            debugLog('DETECT', '检测到手', { 
-                                gesture: newGesture,
-                                currentGesture: currentGesture,
-                                landmarksSample: results.landmarks[0].slice(0, 5).map(p => ({x: p.x.toFixed(2), y: p.y.toFixed(2)}))
-                            });
-                        }
                         
                         if (newGesture && newGesture !== currentGesture) {
                             currentGesture = newGesture;
