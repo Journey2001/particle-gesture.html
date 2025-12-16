@@ -181,7 +181,8 @@
         <button class="btn" id="fullscreen-btn">全屏切换</button>
     </div>
 
-    <script src="https://cdn.bootcdn.net/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- Three.js: 优先用 unpkg，和 MediaPipe 同一个 CDN，代理时都能访问 -->
+    <script src="https://unpkg.com/three@0.128.0/build/three.min.js"></script>
     <script type="module">
         // ========== 调试日志系统 ==========
         let debugVisible = false; // 默认隐藏
