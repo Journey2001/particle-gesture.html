@@ -587,12 +587,12 @@
 
             debugLog('WEBCAM', '请求摄像头权限...');
             
-            // 移动端优化：使用前置摄像头
+            // 移动端优化：使用前置摄像头，降低分辨率提升性能
             const constraints = { 
                 video: { 
                     facingMode: 'user',  // 前置摄像头
-                    width: { ideal: 640 },
-                    height: { ideal: 480 }
+                    width: { ideal: 320 },
+                    height: { ideal: 240 }
                 } 
             };
             debugLog('WEBCAM', '摄像头约束', constraints);
@@ -648,6 +648,8 @@
 
         let predictCallCount = 0;
         let lastPredictLog = 0;
+        let lastDetectTime = 0;
+        const detectInterval = 50; // 50ms = 20fps，降低检测频率提升性能
         
         function predictWebcam() {
             const video = document.getElementById('webcam-video');
@@ -673,6 +675,13 @@
             }
 
             const nowInMs = performance.now();
+            
+            // 限制检测频率，降低 CPU 负载
+            if (nowInMs - lastDetectTime < detectInterval) {
+                if (gestureEnabled) requestAnimationFrame(predictWebcam);
+                return;
+            }
+            lastDetectTime = nowInMs;
             if (lastVideoTime !== video.currentTime) {
                 lastVideoTime = video.currentTime;
                 
