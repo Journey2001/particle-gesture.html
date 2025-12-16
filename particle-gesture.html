@@ -310,6 +310,7 @@
         }
 
         async function createParticles() {
+            debugLog('PARTICLE', '开始创建粒子');
             if (particles) {
                 scene.remove(particles);
                 particles.geometry.dispose();
@@ -317,12 +318,15 @@
             }
             
             if (!currentImageData) {
+                debugLog('PARTICLE', '没有图片数据');
                 document.getElementById('loading').textContent = '请先选择一张图片';
                 document.getElementById('loading').style.display = 'block';
                 return;
             }
             
+            debugLog('PARTICLE', '加载图片中...');
             const img = await loadImage(currentImageData);
+            debugLog('PARTICLE', '图片加载完成', { width: img.width, height: img.height });
             const sampledPoints = sampleFromImage(img, config.particleCount);
             const count = sampledPoints.length;
             
@@ -797,14 +801,22 @@
             });
             
             document.getElementById('image-upload').addEventListener('change', (e) => {
+                debugLog('UI', '图片选择事件触发');
                 const file = e.target.files[0];
                 if (file) {
+                    debugLog('UI', '选择了文件', { name: file.name, size: file.size, type: file.type });
                     const reader = new FileReader();
                     reader.onload = (event) => {
+                        debugLog('UI', '文件读取完成');
                         currentImageData = event.target.result;
                         createParticles();
                     };
+                    reader.onerror = (err) => {
+                        debugLog('UI', '文件读取失败', { error: err });
+                    };
                     reader.readAsDataURL(file);
+                } else {
+                    debugLog('UI', '没有选择文件');
                 }
             });
         }
