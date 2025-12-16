@@ -143,7 +143,7 @@
     <video id="webcam-video" autoplay playsinline></video>
     
     <div id="control-panel">
-        <h3>🎮 控制面板</h3>
+        <h3>🎮 控制面板 <span id="fps-display" style="float:right;color:#8f8;font-size:12px;">-- FPS</span></h3>
         
         <div class="control-group">
             <label>选择图片</label>
@@ -446,8 +446,23 @@
             });
         }
 
+        // FPS 计算
+        let frameCount = 0;
+        let lastFpsTime = performance.now();
+        
         function animate() {
             requestAnimationFrame(animate);
+            
+            // 计算并显示帧率
+            frameCount++;
+            const now = performance.now();
+            if (now - lastFpsTime >= 1000) {
+                const fps = Math.round(frameCount * 1000 / (now - lastFpsTime));
+                document.getElementById('fps-display').textContent = fps + ' FPS';
+                document.getElementById('fps-display').style.color = fps >= 50 ? '#8f8' : fps >= 30 ? '#fa8' : '#f88';
+                frameCount = 0;
+                lastFpsTime = now;
+            }
             
             if (!particles) {
                 renderer.render(scene, camera);
