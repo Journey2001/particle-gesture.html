@@ -225,6 +225,17 @@
                 stack: importError.stack 
             });
         }
+
+        // 检查 Three.js 是否加载成功
+        debugLog('INIT', '检查 Three.js', { 
+            hasThree: typeof THREE !== 'undefined',
+            threeVersion: typeof THREE !== 'undefined' ? THREE.REVISION : 'N/A'
+        });
+        
+        if (typeof THREE === 'undefined') {
+            debugLog('INIT', 'Three.js 未加载！请检查网络');
+            throw new Error('Three.js 未加载');
+        }
         
         let currentImageData = null;
         let scene, camera, renderer, particles;
