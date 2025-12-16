@@ -394,62 +394,49 @@
         // 顶点着色器：在 GPU 上计算粒子位置
         const vertexShader = `
             attribute vec3 originalPosition;
-            attribute vec3 randomPosition;
-            attribute float particleIndex;
+            attribute float aIndex;
             
             uniform float uTime;
             uniform float uRotationAngle;
             uniform float uIsCollapsed;
-            uniform float uLerpProgress;
             uniform float uPatternScale;
             uniform float uParticleCount;
             
             varying float vAlpha;
             
-            // 简化的伪随机函数
-            float rand(float n) {
-                return fract(sin(n) * 43758.5453123);
-            }
-            
             void main() {
-                vec3 targetPos;
-                float idx = particleIndex;
+                float idx = aIndex;
                 float count = uParticleCount;
                 
-                if (uIsCollapsed < 0.5) {
-                    // 扩散旋转状态
-                    float seed = idx * 0.618;
-                    float r = pow(fract(seed * 7.13), 0.333) * 3.0;
-                    
-                    float phi = acos(1.0 - 2.0 * (idx + 0.5) / count);
-                    float theta = 3.14159265 * (1.0 + 1.618) * idx + uRotationAngle;
-                    
-                    float baseX = r * sin(phi) * cos(theta);
-                    float baseY = r * sin(phi) * sin(theta);
-                    float baseZ = r * cos(phi);
-                    
-                    float phase = idx * 0.37;
-                    float jitterX = sin(uTime * 2.1 + phase) * 0.15;
-                    float jitterY = cos(uTime * 1.7 + phase * 1.3) * 0.15;
-                    float jitterZ = sin(uTime * 2.5 + phase * 0.8) * 0.15;
-                    
-                    targetPos = vec3(baseX + jitterX, baseY + jitterY, baseZ + jitterZ);
-                } else {
-                    // 聚合成图案状态
-                    float phase = idx * 0.1;
-                    float floatX = sin(uTime * 1.5 + phase) * 0.02;
-                    float floatY = cos(uTime * 1.2 + phase * 0.7) * 0.02;
-                    float floatZ = sin(uTime * 0.8 + phase * 1.3) * 0.03;
-                    float breathe = 1.0 + sin(uTime * 0.5) * 0.03;
-                    
-                    targetPos = originalPosition * breathe * uPatternScale + vec3(floatX, floatY, floatZ);
-                }
+                // 计算扩散状态位置（旋转球体）
+                float seed = idx * 0.618;
+                float r = pow(fract(seed * 7.13), 0.333) * 3.0;
+                float phi = acos(1.0 - 2.0 * (idx + 0.5) / count);
+                float theta = 3.14159265 * (1.0 + 1.618) * idx + uRotationAngle;
+                float bX = r * sin(phi) * cos(theta);
+                float bY = r * sin(phi) * sin(theta);
+                float bZ = r * cos(phi);
+                float phase1 = idx * 0.37;
+                vec3 scatterPos = vec3(
+                    bX + sin(uTime * 2.1 + phase1) * 0.15,
+                    bY + cos(uTime * 1.7 + phase1 * 1.3) * 0.15,
+                    bZ + sin(uTime * 2.5 + phase1 * 0.8) * 0.15
+                );
                 
-                // 插值过渡
-                vec3 currentPos = mix(randomPosition, targetPos, uLerpProgress);
+                // 计算聚合状态位置（图案）
+                float phase2 = idx * 0.1;
+                float breathe = 1.0 + sin(uTime * 0.5) * 0.03;
+                vec3 patternPos = originalPosition * breathe * uPatternScale + vec3(
+                    sin(uTime * 1.5 + phase2) * 0.02,
+                    cos(uTime * 1.2 + phase2 * 0.7) * 0.02,
+                    sin(uTime * 0.8 + phase2 * 1.3) * 0.03
+                );
+                
+                // 根据 uIsCollapsed 在两种状态间平滑混合
+                vec3 currentPos = mix(scatterPos, patternPos, uIsCollapsed);
                 
                 vec4 mvPosition = modelViewMatrix * vec4(currentPos, 1.0);
-                gl_PointSize = 3.0 * (300.0 / -mvPosition.z);
+                gl_PointSize = max(1.0, 2.0 * (100.0 / -mvPosition.z));
                 gl_Position = projectionMatrix * mvPosition;
                 
                 vAlpha = 0.8;
@@ -519,15 +506,13 @@
             
             geometry.setAttribute('position', new THREE.BufferAttribute(randomPositions.slice(), 3));
             geometry.setAttribute('originalPosition', new THREE.BufferAttribute(originalPositions, 3));
-            geometry.setAttribute('randomPosition', new THREE.BufferAttribute(randomPositions, 3));
-            geometry.setAttribute('particleIndex', new THREE.BufferAttribute(indices, 1));
+            geometry.setAttribute('aIndex', new THREE.BufferAttribute(indices, 1));
             
             // 创建 uniforms
             particleUniforms = {
                 uTime: { value: 0 },
                 uRotationAngle: { value: 0 },
                 uIsCollapsed: { value: 0 },
-                uLerpProgress: { value: 0 },
                 uPatternScale: { value: config.patternScale * 4 },
                 uParticleCount: { value: count },
                 uColor: { value: config.particleColor }
@@ -584,17 +569,14 @@
             // GPU 模式：只更新 uniforms，所有计算在 shader 里完成
             const time = Date.now() * 0.001;
             
-            if (!isCollapsed) {
-                rotationAngle += 0.01 * config.rotationSpeed;
-            }
+            rotationAngle += 0.01 * config.rotationSpeed;
             
-            // 平滑过渡 lerpProgress
-            const targetLerp = 1.0;
-            particleUniforms.uLerpProgress.value += (targetLerp - particleUniforms.uLerpProgress.value) * 0.05;
+            // 平滑过渡 isCollapsed（0 到 1 之间渐变）
+            const targetCollapsed = isCollapsed ? 1.0 : 0.0;
+            particleUniforms.uIsCollapsed.value += (targetCollapsed - particleUniforms.uIsCollapsed.value) * 0.05;
             
             particleUniforms.uTime.value = time;
             particleUniforms.uRotationAngle.value = rotationAngle;
-            particleUniforms.uIsCollapsed.value = isCollapsed ? 1.0 : 0.0;
             particleUniforms.uPatternScale.value = config.patternScale * 4;
             
             renderer.render(scene, camera);
