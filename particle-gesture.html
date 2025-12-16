@@ -860,9 +860,25 @@
             }
         }
 
-        initThree();
-        initUI();
-        animate();
+        try {
+            debugLog('INIT', '开始初始化 Three.js');
+            initThree();
+            debugLog('INIT', 'Three.js 初始化完成');
+            
+            debugLog('INIT', '开始初始化 UI');
+            initUI();
+            debugLog('INIT', 'UI 初始化完成');
+            
+            debugLog('INIT', '开始动画循环');
+            animate();
+            debugLog('INIT', '全部初始化完成');
+        } catch (initError) {
+            debugLog('INIT', '初始化失败', { 
+                name: initError.name, 
+                message: initError.message,
+                stack: initError.stack 
+            });
+        }
     </script>
 </body>
 </html>
