@@ -684,8 +684,22 @@
         let lastDetectTime = 0;
         let detectInterval = config.detectInterval || 50; // 可配置的检测间隔
         let gesturePauseUntil = 0; // 手势切换后暂停检测的时间点
+        let isDetectFrame = false; // 分帧检测标志：当前帧是否为检测帧
         
-        function predictWebcam() {
+        // 分帧检测：在独立的帧中执行检测，不与渲染同帧
+        function scheduleDetection() {
+            if (!gestureEnabled) return;
+            
+            requestAnimationFrame(() => {
+                doDetection();
+                // 根据检测间隔安排下一次检测
+                if (gestureEnabled) {
+                    setTimeout(scheduleDetection, detectInterval);
+                }
+            });
+        }
+        
+        function doDetection() {
             const video = document.getElementById('webcam-video');
             predictCallCount++;
             
@@ -704,7 +718,6 @@
             }
             
             if (!handLandmarker || !video.srcObject || !gestureEnabled) {
-                if (gestureEnabled) requestAnimationFrame(predictWebcam);
                 return;
             }
 
@@ -712,16 +725,9 @@
             
             // 手势切换后暂停检测 500ms
             if (nowInMs < gesturePauseUntil) {
-                if (gestureEnabled) requestAnimationFrame(predictWebcam);
                 return;
             }
             
-            // 限制检测频率，降低 CPU 负载
-            if (nowInMs - lastDetectTime < detectInterval) {
-                if (gestureEnabled) requestAnimationFrame(predictWebcam);
-                return;
-            }
-            lastDetectTime = nowInMs;
             if (lastVideoTime !== video.currentTime) {
                 lastVideoTime = video.currentTime;
                 
@@ -780,8 +786,11 @@
                     });
                 }
             }
-
-            if (gestureEnabled) requestAnimationFrame(predictWebcam);
+        }
+        
+        // 保留旧函数名以兼容 startWebcam 中的调用
+        function predictWebcam() {
+            scheduleDetection();
         }
 
         // 判断手指是否伸直：指尖y坐标 < 指根关节y坐标
