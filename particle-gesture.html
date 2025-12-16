@@ -184,19 +184,28 @@
     <script src="https://cdn.bootcdn.net/ajax/libs/three.js/r128/three.min.js"></script>
     <script type="module">
         // ========== 调试日志系统 ==========
+        let debugVisible = false; // 默认隐藏
+        
+        // 创建调试面板和切换按钮
+        const debugPanel = document.createElement('div');
+        debugPanel.id = 'debug-panel';
+        debugPanel.style.cssText = 'position:fixed;top:30px;left:0;right:0;max-height:200px;overflow-y:auto;background:rgba(0,0,0,0.9);color:#0f0;font-size:11px;padding:5px;z-index:9998;font-family:monospace;display:none;';
+        document.body.appendChild(debugPanel);
+        
+        const debugToggleBtn = document.createElement('button');
+        debugToggleBtn.textContent = '📋 Log';
+        debugToggleBtn.style.cssText = 'position:fixed;top:5px;left:5px;z-index:9999;padding:3px 8px;font-size:11px;background:#333;color:#0f0;border:1px solid #0f0;border-radius:4px;cursor:pointer;';
+        debugToggleBtn.onclick = () => {
+            debugVisible = !debugVisible;
+            debugPanel.style.display = debugVisible ? 'block' : 'none';
+        };
+        document.body.appendChild(debugToggleBtn);
+        
         const debugLog = (tag, message, data = null) => {
             const timestamp = new Date().toISOString().substr(11, 12);
             const logMsg = `[${timestamp}][${tag}] ${message}`;
             console.log(logMsg, data !== null ? data : '');
             
-            // 同时显示在页面上方便移动端查看
-            let debugPanel = document.getElementById('debug-panel');
-            if (!debugPanel) {
-                debugPanel = document.createElement('div');
-                debugPanel.id = 'debug-panel';
-                debugPanel.style.cssText = 'position:fixed;top:0;left:0;right:0;max-height:200px;overflow-y:auto;background:rgba(0,0,0,0.9);color:#0f0;font-size:11px;padding:5px;z-index:9999;font-family:monospace;';
-                document.body.appendChild(debugPanel);
-            }
             const line = document.createElement('div');
             line.textContent = logMsg + (data !== null ? ' ' + JSON.stringify(data) : '');
             debugPanel.appendChild(line);
