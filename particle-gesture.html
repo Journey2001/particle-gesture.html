@@ -253,11 +253,52 @@
         let isCollapsed = false;  // false=扩散, true=聚合
         let rotationAngle = 0;
         
-        let config = {
+        // ========== 本地存储功能 ==========
+        function loadConfig() {
+            try {
+                const saved = localStorage.getItem('particle-gesture-config');
+                if (saved) {
+                    const parsed = JSON.parse(saved);
+                    debugLog('CONFIG', '读取本地配置', parsed);
+                    return {
+                        particleCount: parsed.particleCount || 10000,
+                        patternScale: parsed.patternScale || 0.5,
+                        rotationSpeed: parsed.rotationSpeed || 1.0,
+                        particleColor: new THREE.Color(parsed.particleColorHex || 0x88aaff),
+                        particleColorHex: parsed.particleColorHex || '#88aaff'
+                    };
+                }
+            } catch (e) {
+                debugLog('CONFIG', '读取配置失败', e.message);
+            }
+            return null;
+        }
+        
+        function saveConfig() {
+            try {
+                const toSave = {
+                    particleCount: config.particleCount,
+                    patternScale: config.patternScale,
+                    rotationSpeed: config.rotationSpeed,
+                    particleColorHex: config.particleColorHex
+                };
+                localStorage.setItem('particle-gesture-config', JSON.stringify(toSave));
+                debugLog('CONFIG', '保存配置', toSave);
+            } catch (e) {
+                debugLog('CONFIG', '保存配置失败', e.message);
+            }
+        }
+        
+        // 加载保存的配置或使用默认值
+        const savedConfig = loadConfig();
+        let config = savedConfig || {
             particleCount: 10000,
             patternScale: 0.5,
             rotationSpeed: 1.0,
-            particleColor: new THREE.Color(0x88aaff)
+            particleColor: new THREE.Color(0x88aaff),
+            particleColorHex: '#88aaff'
+        };
+        if (!config.particleColorHex) config.particleColorHex = '#88aaff';
         };
 
         // 手势识别相关
@@ -748,6 +789,15 @@
             const toggleBtn = document.getElementById('toggle-btn');
             const gestureBtn = document.getElementById('gesture-btn');
             
+            // 应用保存的配置到 UI
+            document.getElementById('particle-count').value = config.particleCount;
+            document.getElementById('particle-count-val').textContent = config.particleCount;
+            document.getElementById('pattern-scale').value = config.patternScale * 100;
+            document.getElementById('pattern-scale-val').textContent = (config.patternScale * 100) + '%';
+            document.getElementById('rotation-speed').value = config.rotationSpeed * 10;
+            document.getElementById('rotation-speed-val').textContent = config.rotationSpeed.toFixed(1);
+            document.getElementById('particle-color').value = config.particleColorHex;
+            
             toggleBtn.addEventListener('click', () => {
                 setCollapsed(!isCollapsed);
             });
@@ -785,23 +835,28 @@
             document.getElementById('particle-count').addEventListener('change', (e) => {
                 config.particleCount = parseInt(e.target.value);
                 document.getElementById('particle-count-val').textContent = config.particleCount;
+                saveConfig();
                 createParticles();
             });
             
             document.getElementById('pattern-scale').addEventListener('input', (e) => {
                 config.patternScale = e.target.value / 100;
                 document.getElementById('pattern-scale-val').textContent = e.target.value + '%';
+                saveConfig();
                 updatePatternScale();
             });
             
             document.getElementById('rotation-speed').addEventListener('input', (e) => {
                 config.rotationSpeed = e.target.value / 10;
                 document.getElementById('rotation-speed-val').textContent = config.rotationSpeed.toFixed(1);
+                saveConfig();
             });
             
             document.getElementById('particle-color').addEventListener('input', (e) => {
                 config.particleColor = new THREE.Color(e.target.value);
+                config.particleColorHex = e.target.value;
                 if (particles) particles.material.color = config.particleColor;
+                saveConfig();
             });
             
             document.getElementById('fullscreen-btn').addEventListener('click', () => {
@@ -819,6 +874,28 @@
                     e.preventDefault();
                     toggleUI();
                 }
+            });
+            
+            // 双击屏幕退出全屏并显示 UI
+            let lastTap = 0;
+            document.addEventListener('touchend', (e) => {
+                const now = Date.now();
+                if (now - lastTap < 300) {
+                    // 双击检测
+                    if (document.fullscreenElement) {
+                        document.exitFullscreen();
+                    }
+                    showUI();
+                }
+                lastTap = now;
+            });
+            
+            // 鼠标双击也支持
+            document.addEventListener('dblclick', () => {
+                if (document.fullscreenElement) {
+                    document.exitFullscreen();
+                }
+                showUI();
             });
             
             document.getElementById('image-upload').addEventListener('change', (e) => {
@@ -863,6 +940,9 @@
             uiHidden = true;
             document.getElementById('control-panel').style.display = 'none';
             document.getElementById('webcam-video').style.visibility = 'hidden';
+            debugToggleBtn.style.display = 'none';
+            debugPanel.style.display = 'none';
+            debugVisible = false;
         }
         
         function showUI() {
@@ -871,6 +951,7 @@
             if (gestureEnabled) {
                 document.getElementById('webcam-video').style.visibility = 'visible';
             }
+            debugToggleBtn.style.display = 'block';
         }
         
         function toggleUI() {
@@ -893,6 +974,12 @@
             debugLog('INIT', '开始动画循环');
             animate();
             debugLog('INIT', '全部初始化完成');
+            
+            // 默认启用手势控制
+            debugLog('INIT', '自动启用手势控制...');
+            setTimeout(() => {
+                document.getElementById('gesture-btn').click();
+            }, 500);
         } catch (initError) {
             debugLog('INIT', '初始化失败', { 
                 name: initError.name, 
