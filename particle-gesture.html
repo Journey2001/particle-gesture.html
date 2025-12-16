@@ -758,8 +758,10 @@
             if (lastVideoTime !== video.currentTime) {
                 lastVideoTime = video.currentTime;
                 
+                // 用 setTimeout 把检测推迟到下一个事件循环，避免阻塞当前帧渲染
+                setTimeout(() => {
                 try {
-                    const results = handLandmarker.detectForVideo(video, nowInMs);
+                    const results = handLandmarker.detectForVideo(video, performance.now());
                     
                     // 每200帧输出一次检测结果（减少日志频率）
                     if (predictCallCount % 200 === 0) {
@@ -802,6 +804,7 @@
                         message: detectError.message 
                     });
                 }
+                }, 0); // setTimeout 结束
             }
 
             if (gestureEnabled) requestAnimationFrame(predictWebcam);
