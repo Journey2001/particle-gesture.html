@@ -388,78 +388,8 @@
             return sampled;
         }
 
-        // ShaderMaterial uniforms（全局引用，方便 animate 更新）
-        let particleUniforms = null;
-        
-        // 顶点着色器：在 GPU 上计算粒子位置
-        const vertexShader = `
-            attribute vec3 originalPosition;
-            attribute float aIndex;
-            
-            uniform float uTime;
-            uniform float uRotationAngle;
-            uniform float uIsCollapsed;
-            uniform float uPatternScale;
-            uniform float uParticleCount;
-            
-            varying float vAlpha;
-            
-            void main() {
-                float idx = aIndex;
-                float count = uParticleCount;
-                
-                // 计算扩散状态位置（旋转球体）
-                float seed = idx * 0.618;
-                float r = pow(fract(seed * 7.13), 0.333) * 3.0;
-                float phi = acos(1.0 - 2.0 * (idx + 0.5) / count);
-                float theta = 3.14159265 * (1.0 + 1.618) * idx + uRotationAngle;
-                float bX = r * sin(phi) * cos(theta);
-                float bY = r * sin(phi) * sin(theta);
-                float bZ = r * cos(phi);
-                float phase1 = idx * 0.37;
-                vec3 scatterPos = vec3(
-                    bX + sin(uTime * 2.1 + phase1) * 0.15,
-                    bY + cos(uTime * 1.7 + phase1 * 1.3) * 0.15,
-                    bZ + sin(uTime * 2.5 + phase1 * 0.8) * 0.15
-                );
-                
-                // 计算聚合状态位置（图案）
-                float phase2 = idx * 0.1;
-                float breathe = 1.0 + sin(uTime * 0.5) * 0.03;
-                vec3 patternPos = originalPosition * breathe * uPatternScale + vec3(
-                    sin(uTime * 1.5 + phase2) * 0.02,
-                    cos(uTime * 1.2 + phase2 * 0.7) * 0.02,
-                    sin(uTime * 0.8 + phase2 * 1.3) * 0.03
-                );
-                
-                // 根据 uIsCollapsed 在两种状态间平滑混合
-                vec3 currentPos = mix(scatterPos, patternPos, uIsCollapsed);
-                
-                vec4 mvPosition = modelViewMatrix * vec4(currentPos, 1.0);
-                gl_PointSize = max(1.0, 2.0 * (100.0 / -mvPosition.z));
-                gl_Position = projectionMatrix * mvPosition;
-                
-                vAlpha = 0.8;
-            }
-        `;
-        
-        // 片元着色器
-        const fragmentShader = `
-            uniform vec3 uColor;
-            varying float vAlpha;
-            
-            void main() {
-                // 圆形粒子
-                float dist = length(gl_PointCoord - vec2(0.5));
-                if (dist > 0.5) discard;
-                
-                float alpha = vAlpha * (1.0 - dist * 2.0);
-                gl_FragColor = vec4(uColor, alpha);
-            }
-        `;
-
         async function createParticles() {
-            debugLog('PARTICLE', '开始创建粒子 (GPU模式)');
+            debugLog('PARTICLE', '开始创建粒子');
             if (particles) {
                 scene.remove(particles);
                 particles.geometry.dispose();
@@ -480,58 +410,40 @@
             const count = sampledPoints.length;
             
             const geometry = new THREE.BufferGeometry();
-            
-            // 原始位置（图案位置，未缩放）
+            particlePositions = new Float32Array(count * 3);
+            targetPositions = new Float32Array(count * 3);
             originalPositions = new Float32Array(count * 3);
-            // 随机初始位置
-            const randomPositions = new Float32Array(count * 3);
-            // 粒子索引
-            const indices = new Float32Array(count);
             
             for (let i = 0; i < count; i++) {
                 const i3 = i * 3;
+                particlePositions[i3] = (Math.random() - 0.5) * 10;
+                particlePositions[i3 + 1] = (Math.random() - 0.5) * 10;
+                particlePositions[i3 + 2] = (Math.random() - 0.5) * 5;
                 
-                // 随机初始位置
-                randomPositions[i3] = (Math.random() - 0.5) * 10;
-                randomPositions[i3 + 1] = (Math.random() - 0.5) * 10;
-                randomPositions[i3 + 2] = (Math.random() - 0.5) * 5;
-                
-                // 图案目标位置（存储未缩放的值，缩放在shader里做）
-                originalPositions[i3] = sampledPoints[i].x;
-                originalPositions[i3 + 1] = sampledPoints[i].y;
+                const scale = config.patternScale * 4;
+                originalPositions[i3] = sampledPoints[i].x * scale;
+                originalPositions[i3 + 1] = sampledPoints[i].y * scale;
                 originalPositions[i3 + 2] = 0;
                 
-                indices[i] = i;
+                targetPositions[i3] = particlePositions[i3];
+                targetPositions[i3 + 1] = particlePositions[i3 + 1];
+                targetPositions[i3 + 2] = particlePositions[i3 + 2];
             }
             
-            geometry.setAttribute('position', new THREE.BufferAttribute(randomPositions.slice(), 3));
-            geometry.setAttribute('originalPosition', new THREE.BufferAttribute(originalPositions, 3));
-            geometry.setAttribute('aIndex', new THREE.BufferAttribute(indices, 1));
+            geometry.setAttribute('position', new THREE.BufferAttribute(particlePositions, 3));
             
-            // 创建 uniforms
-            particleUniforms = {
-                uTime: { value: 0 },
-                uRotationAngle: { value: 0 },
-                uIsCollapsed: { value: 0 },
-                uPatternScale: { value: config.patternScale * 4 },
-                uParticleCount: { value: count },
-                uColor: { value: config.particleColor }
-            };
-            
-            const material = new THREE.ShaderMaterial({
-                uniforms: particleUniforms,
-                vertexShader: vertexShader,
-                fragmentShader: fragmentShader,
+            const material = new THREE.PointsMaterial({
+                color: config.particleColor,
+                size: 0.03,
                 transparent: true,
-                depthWrite: false,
-                blending: THREE.AdditiveBlending
+                opacity: 0.8,
+                sizeAttenuation: true
             });
             
             particles = new THREE.Points(geometry, material);
             scene.add(particles);
             
             document.getElementById('loading').style.display = 'none';
-            debugLog('PARTICLE', 'GPU粒子创建完成', { count });
         }
         
         function loadImage(src) {
@@ -547,6 +459,20 @@
         let frameCount = 0;
         let lastFpsTime = performance.now();
         
+        // 三角函数查表优化
+        const TABLE_SIZE = 4096;
+        const TABLE_MASK = TABLE_SIZE - 1;
+        const sinTable = new Float32Array(TABLE_SIZE);
+        const cosTable = new Float32Array(TABLE_SIZE);
+        for (let i = 0; i < TABLE_SIZE; i++) {
+            const angle = (i / TABLE_SIZE) * Math.PI * 2;
+            sinTable[i] = Math.sin(angle);
+            cosTable[i] = Math.cos(angle);
+        }
+        // 快速查表函数，输入弧度
+        const fastSin = (rad) => sinTable[((rad * TABLE_SIZE / (Math.PI * 2)) & TABLE_MASK) | 0];
+        const fastCos = (rad) => cosTable[((rad * TABLE_SIZE / (Math.PI * 2)) & TABLE_MASK) | 0];
+        
         function animate() {
             requestAnimationFrame(animate);
             
@@ -561,24 +487,69 @@
                 lastFpsTime = now;
             }
             
-            if (!particles || !particleUniforms) {
+            if (!particles) {
                 renderer.render(scene, camera);
                 return;
             }
             
-            // GPU 模式：只更新 uniforms，所有计算在 shader 里完成
-            const time = Date.now() * 0.001;
+            const positions = particles.geometry.attributes.position.array;
+            const count = positions.length / 3;
             
-            rotationAngle += 0.01 * config.rotationSpeed;
+            if (!isCollapsed) {
+                rotationAngle += 0.01 * config.rotationSpeed;
+                const time = Date.now() * 0.001;
+                
+                for (let i = 0; i < count; i++) {
+                    const i3 = i * 3;
+                    const seed = i * 0.618;
+                    const r = Math.pow((seed * 7.13) % 1, 1/3) * 3;
+                    
+                    const phi = Math.acos(1 - 2 * (i + 0.5) / count);
+                    const theta = Math.PI * (1 + Math.sqrt(5)) * i + rotationAngle;
+                    
+                    const sinPhi = fastSin(phi);
+                    const cosPhi = fastCos(phi);
+                    const sinTheta = fastSin(theta);
+                    const cosTheta = fastCos(theta);
+                    
+                    const baseX = r * sinPhi * cosTheta;
+                    const baseY = r * sinPhi * sinTheta;
+                    const baseZ = r * cosPhi;
+                    
+                    const phase = i * 0.37;
+                    const jitterX = fastSin(time * 2.1 + phase) * 0.15;
+                    const jitterY = fastCos(time * 1.7 + phase * 1.3) * 0.15;
+                    const jitterZ = fastSin(time * 2.5 + phase * 0.8) * 0.15;
+                    
+                    targetPositions[i3] = baseX + jitterX;
+                    targetPositions[i3 + 1] = baseY + jitterY;
+                    targetPositions[i3 + 2] = baseZ + jitterZ;
+                }
+            } else {
+                const time = Date.now() * 0.001;
+                const breathe = 1 + fastSin(time * 0.5) * 0.03;
+                for (let i = 0; i < count; i++) {
+                    const i3 = i * 3;
+                    const phase = i * 0.1;
+                    const floatX = fastSin(time * 1.5 + phase) * 0.02;
+                    const floatY = fastCos(time * 1.2 + phase * 0.7) * 0.02;
+                    const floatZ = fastSin(time * 0.8 + phase * 1.3) * 0.03;
+                    
+                    targetPositions[i3] = originalPositions[i3] * breathe + floatX;
+                    targetPositions[i3 + 1] = originalPositions[i3 + 1] * breathe + floatY;
+                    targetPositions[i3 + 2] = originalPositions[i3 + 2] + floatZ;
+                }
+            }
             
-            // 平滑过渡 isCollapsed（0 到 1 之间渐变）
-            const targetCollapsed = isCollapsed ? 1.0 : 0.0;
-            particleUniforms.uIsCollapsed.value += (targetCollapsed - particleUniforms.uIsCollapsed.value) * 0.05;
+            const lerpFactor = 0.05;
+            for (let i = 0; i < count; i++) {
+                const i3 = i * 3;
+                positions[i3] += (targetPositions[i3] - positions[i3]) * lerpFactor;
+                positions[i3 + 1] += (targetPositions[i3 + 1] - positions[i3 + 1]) * lerpFactor;
+                positions[i3 + 2] += (targetPositions[i3 + 2] - positions[i3 + 2]) * lerpFactor;
+            }
             
-            particleUniforms.uTime.value = time;
-            particleUniforms.uRotationAngle.value = rotationAngle;
-            particleUniforms.uPatternScale.value = config.patternScale * 4;
-            
+            particles.geometry.attributes.position.needsUpdate = true;
             renderer.render(scene, camera);
         }
 
@@ -959,7 +930,7 @@
             document.getElementById('particle-color').addEventListener('input', (e) => {
                 config.particleColor = new THREE.Color(e.target.value);
                 config.particleColorHex = e.target.value;
-                if (particleUniforms) particleUniforms.uColor.value = config.particleColor;
+                if (particles) particles.material.color = config.particleColor;
                 saveConfig();
             });
             
