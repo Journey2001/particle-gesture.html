@@ -159,6 +159,11 @@
         <p style="font-size:11px; color:#888; margin-top:8px;">✊ 握拳 → 聚合图案 | 🖐️ 张开 → 扩散旋转</p>
         
         <div class="control-group">
+            <label>手势检测频率 <span class="value-display" id="detect-interval-val">50ms</span></label>
+            <input type="range" id="detect-interval" value="50" min="30" max="200" step="10">
+        </div>
+        
+        <div class="control-group">
             <label>粒子数量 <span class="value-display" id="particle-count-val">10000</span></label>
             <input type="number" id="particle-count" value="10000" min="500" max="20000" step="500">
         </div>
@@ -271,7 +276,8 @@
                         rotationSpeed: parsed.rotationSpeed || 1.0,
                         particleColor: new THREE.Color(parsed.particleColorHex || 0x88aaff),
                         particleColorHex: parsed.particleColorHex || '#88aaff',
-                        pixelRatio: parsed.pixelRatio || 2.0
+                        pixelRatio: parsed.pixelRatio || 2.0,
+                        detectInterval: parsed.detectInterval || 50
                     };
                 }
             } catch (e) {
@@ -287,7 +293,8 @@
                     patternScale: config.patternScale,
                     rotationSpeed: config.rotationSpeed,
                     particleColorHex: config.particleColorHex,
-                    pixelRatio: config.pixelRatio
+                    pixelRatio: config.pixelRatio,
+                    detectInterval: config.detectInterval
                 };
                 localStorage.setItem('particle-gesture-config', JSON.stringify(toSave));
                 debugLog('CONFIG', '保存配置', toSave);
@@ -304,10 +311,12 @@
             rotationSpeed: 1.0,
             particleColor: new THREE.Color(0x88aaff),
             particleColorHex: '#88aaff',
-            pixelRatio: 2.0
+            pixelRatio: 2.0,
+            detectInterval: 50
         };
         if (!config.particleColorHex) config.particleColorHex = '#88aaff';
         if (!config.pixelRatio) config.pixelRatio = Math.min(window.devicePixelRatio, 2);
+        if (!config.detectInterval) config.detectInterval = 50;
 
         // 手势识别相关
         let handLandmarker = undefined;
@@ -673,7 +682,8 @@
         let predictCallCount = 0;
         let lastPredictLog = 0;
         let lastDetectTime = 0;
-        const detectInterval = 50; // 50ms = 20fps，降低检测频率提升性能
+        let detectInterval = config.detectInterval || 50; // 可配置的检测间隔
+        let gesturePauseUntil = 0; // 手势切换后暂停检测的时间点
         
         function predictWebcam() {
             const video = document.getElementById('webcam-video');
@@ -699,6 +709,12 @@
             }
 
             const nowInMs = performance.now();
+            
+            // 手势切换后暂停检测 500ms
+            if (nowInMs < gesturePauseUntil) {
+                if (gestureEnabled) requestAnimationFrame(predictWebcam);
+                return;
+            }
             
             // 限制检测频率，降低 CPU 负载
             if (nowInMs - lastDetectTime < detectInterval) {
@@ -737,12 +753,20 @@
                             currentGesture = newGesture;
                             debugLog('GESTURE', '手势变化', { gesture: currentGesture });
                             
+                            let stateChanged = false;
                             if (currentGesture === 'Fist' && !isCollapsed) {
                                 // 握拳 → 聚合成图案
                                 setCollapsed(true);
+                                stateChanged = true;
                             } else if (currentGesture === 'Open' && isCollapsed) {
                                 // 张开 → 扩散旋转
                                 setCollapsed(false);
+                                stateChanged = true;
+                            }
+                            
+                            // 状态切换后暂停检测 500ms，避免连续触发
+                            if (stateChanged) {
+                                gesturePauseUntil = performance.now() + 500;
                             }
                             
                             document.getElementById('gesture-status').textContent = 
@@ -899,6 +923,16 @@
                 document.getElementById('pixel-ratio-val').textContent = config.pixelRatio.toFixed(1);
                 renderer.setPixelRatio(config.pixelRatio);
                 renderer.setSize(window.innerWidth, window.innerHeight);
+                saveConfig();
+            });
+            
+            // 手势检测频率控制
+            document.getElementById('detect-interval').value = config.detectInterval;
+            document.getElementById('detect-interval-val').textContent = config.detectInterval + 'ms';
+            document.getElementById('detect-interval').addEventListener('input', (e) => {
+                config.detectInterval = parseInt(e.target.value);
+                detectInterval = config.detectInterval;
+                document.getElementById('detect-interval-val').textContent = config.detectInterval + 'ms';
                 saveConfig();
             });
             
