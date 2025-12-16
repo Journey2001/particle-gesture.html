@@ -717,6 +717,8 @@
         let lastDetectTime = 0;
         let detectInterval = config.detectInterval || 50; // 可配置的检测间隔
         let gesturePauseUntil = 0; // 手势切换后暂停检测的时间点
+        let noHandCount = 0; // 连续未检测到手的次数
+        const IDLE_DETECT_INTERVAL = 300; // 空闲时的检测间隔（ms）
         
         function predictWebcam() {
             const video = document.getElementById('webcam-video');
@@ -750,7 +752,9 @@
             }
             
             // 限制检测频率，降低 CPU 负载
-            if (nowInMs - lastDetectTime < detectInterval) {
+            // 根据是否检测到手动态调整检测频率
+            const currentInterval = noHandCount > 5 ? IDLE_DETECT_INTERVAL : detectInterval;
+            if (nowInMs - lastDetectTime < currentInterval) {
                 if (gestureEnabled) requestAnimationFrame(predictWebcam);
                 return;
             }
@@ -763,15 +767,9 @@
                 try {
                     const results = handLandmarker.detectForVideo(video, performance.now());
                     
-                    // 每200帧输出一次检测结果（减少日志频率）
-                    if (predictCallCount % 200 === 0) {
-                        debugLog('DETECT', '检测结果', {
-                            hasLandmarks: !!(results.landmarks && results.landmarks.length > 0),
-                            landmarksCount: results.landmarks ? results.landmarks.length : 0
-                        });
-                    }
-                    
                     if (results.landmarks && results.landmarks.length > 0) {
+                        // 检测到手，重置计数，恢复正常检测频率
+                        noHandCount = 0;
                         const newGesture = determineGesture(results.landmarks[0]);
                         
                         if (newGesture && newGesture !== currentGesture) {
@@ -797,6 +795,9 @@
                             document.getElementById('gesture-status').textContent = 
                                 `手势：${currentGesture === 'Fist' ? '✊ 握拳' : currentGesture === 'Open' ? '🖐️ 张开' : '识别中...'}`;
                         }
+                    } else {
+                        // 未检测到手，增加计数，逐渐降低检测频率
+                        noHandCount++;
                     }
                 } catch (detectError) {
                     debugLog('PREDICT', '检测出错', { 
