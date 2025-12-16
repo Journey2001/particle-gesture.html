@@ -178,6 +178,11 @@
             <input type="color" id="particle-color" value="#88aaff">
         </div>
         
+        <div class="control-group">
+            <label>渲染质量 <span class="value-display" id="pixel-ratio-val">2.0</span></label>
+            <input type="range" id="pixel-ratio" value="20" min="5" max="20" step="5">
+        </div>
+        
         <button class="btn" id="fullscreen-btn">全屏切换</button>
     </div>
 
@@ -265,7 +270,8 @@
                         patternScale: parsed.patternScale || 0.5,
                         rotationSpeed: parsed.rotationSpeed || 1.0,
                         particleColor: new THREE.Color(parsed.particleColorHex || 0x88aaff),
-                        particleColorHex: parsed.particleColorHex || '#88aaff'
+                        particleColorHex: parsed.particleColorHex || '#88aaff',
+                        pixelRatio: parsed.pixelRatio || 2.0
                     };
                 }
             } catch (e) {
@@ -280,7 +286,8 @@
                     particleCount: config.particleCount,
                     patternScale: config.patternScale,
                     rotationSpeed: config.rotationSpeed,
-                    particleColorHex: config.particleColorHex
+                    particleColorHex: config.particleColorHex,
+                    pixelRatio: config.pixelRatio
                 };
                 localStorage.setItem('particle-gesture-config', JSON.stringify(toSave));
                 debugLog('CONFIG', '保存配置', toSave);
@@ -296,9 +303,11 @@
             patternScale: 0.5,
             rotationSpeed: 1.0,
             particleColor: new THREE.Color(0x88aaff),
-            particleColorHex: '#88aaff'
+            particleColorHex: '#88aaff',
+            pixelRatio: 2.0
         };
         if (!config.particleColorHex) config.particleColorHex = '#88aaff';
+        if (!config.pixelRatio) config.pixelRatio = Math.min(window.devicePixelRatio, 2);
 
         // 手势识别相关
         let handLandmarker = undefined;
@@ -313,7 +322,7 @@
             
             renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.setPixelRatio(config.pixelRatio);
             document.getElementById('canvas-container').appendChild(renderer.domElement);
             
             window.addEventListener('resize', () => {
@@ -864,6 +873,17 @@
                 config.particleColor = new THREE.Color(e.target.value);
                 config.particleColorHex = e.target.value;
                 if (particles) particles.material.color = config.particleColor;
+                saveConfig();
+            });
+            
+            // 渲染质量控制
+            document.getElementById('pixel-ratio').value = config.pixelRatio * 10;
+            document.getElementById('pixel-ratio-val').textContent = config.pixelRatio.toFixed(1);
+            document.getElementById('pixel-ratio').addEventListener('input', (e) => {
+                config.pixelRatio = e.target.value / 10;
+                document.getElementById('pixel-ratio-val').textContent = config.pixelRatio.toFixed(1);
+                renderer.setPixelRatio(config.pixelRatio);
+                renderer.setSize(window.innerWidth, window.innerHeight);
                 saveConfig();
             });
             
